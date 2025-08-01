@@ -48,7 +48,7 @@ java ShamirSecretSolver
 
 ### Test Case 2
 - **Secret**: 79836264049851
-- **Polynomial**: 6th degree polynomial with 7 coefficients
+- **Polynomial**: 6th degree polynomial with coefficients [79836264049851, 92534348706405, 234176747398429, 147160079768248, 105860038268942, 129715447661077, 205802168748539]
 - **All calculations**: Performed with high precision using BigInteger and BigDecimal
 
 ## Implementation Features
@@ -79,6 +79,29 @@ Vandermonde matrix solved successfully!
 
 *** SECRET FOUND: 3 ***
 Full polynomial coefficients: [3, 0, 1]
+===================================================
+
+Processing: testcase2.json
+n (total points): 10
+k (minimum required): 7
+
+Decoded points (x, y):
+(1, 995085094601491)
+(2, 21394886326566393)
+(3, 196563650089608567)
+(4, 1016509518118225951)
+(5, 3711974121218449851)
+(6, 10788619898233492461)
+(7, 26709394976508342463)
+(8, 58725075613853308713)
+(9, 117852986202006511971)
+(10, 220003896831595324801)
+Solving using Vandermonde Matrix Method with 7 points...
+Vandermonde matrix solved successfully!
+
+*** SECRET FOUND: 79836264049851 ***
+Full polynomial coefficients: [79836264049851, 92534348706405, 234176747398429, 147160079768248, 105860038268942, 129715447661077, 205802168748539]
+===================================================
 ```
 
 ## Mathematical Background
