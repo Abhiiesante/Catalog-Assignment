@@ -8,8 +8,6 @@ import java.util.regex.*;
  * 
  * This program implements Shamir's Secret Sharing reconstruction using
  * the Vandermonde matrix approach to find the polynomial's constant term (secret).
- * 
- * @author Assignment Solution
  */
 public class ShamirSecretSolver {
     
