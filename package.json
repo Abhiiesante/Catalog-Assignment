@@ -1,0 +1,23 @@
+{
+  "name": "shamir-secret-sharing-solver",
+  "version": "1.0.0",
+  "description": "A solver for Shamir's Secret Sharing scheme that finds polynomial constants from encoded roots",
+  "main": "shamir_secret_solver.js",
+  "scripts": {
+    "start": "node shamir_secret_solver.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "shamir",
+    "secret-sharing",
+    "polynomial",
+    "lagrange",
+    "interpolation",
+    "cryptography"
+  ],
+  "author": "Assignment Solution",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
