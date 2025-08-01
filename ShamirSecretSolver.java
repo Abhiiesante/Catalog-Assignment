@@ -4,209 +4,200 @@ import java.util.*;
 import java.util.regex.*;
 
 /**
- * Shamir's Secret Sharing Solver using Vandermonde Matrix Method
- * 
- * This program implements Shamir's Secret Sharing reconstruction using
- * the Vandermonde matrix approach to find the polynomial's constant term (secret).
+ * Enhanced Shamir's Secret Sharing Solver
+ *
+ * This version logs which points fail validation when reconstructing the
+ * polynomial,
+ * so you can pinpoint inconsistent inputs (outliers) in a test case.
  */
 public class ShamirSecretSolver {
-    
     public static void main(String[] args) throws Exception {
         System.out.println("=== Shamir's Secret Sharing Solver ===");
-        System.out.println("Using Vandermonde Matrix Method\n");
-        
+        System.out.println("Using Vandermonde Matrix Method with Validation Logging\n");
         // Process both test cases
         processTestCase("testcase1.json");
         processTestCase("testcase2.json");
     }
-    
-    /**
-     * Process a single test case file
-     * @param filename The JSON file containing the test case
-     */
+
     public static void processTestCase(String filename) throws Exception {
         System.out.println("Processing: " + filename);
-        
-        // Parse the JSON file
         TestCaseData data = parseJsonFile(filename);
-        
         System.out.println("n (total points): " + data.n);
-        System.out.println("k (minimum required): " + data.k);
-        
-        // Display decoded points
-        System.out.println("\nDecoded points (x, y):");
-        for (Point point : data.points) {
-            System.out.println("(" + point.x + ", " + point.y + ")");
+        System.out.println("k (minimum required): " + data.k + "\n");
+        System.out.println("Decoded points (x, y):");
+        for (Point p : data.points) {
+            System.out.println("(" + p.x + ", " + p.y + ")");
         }
-        
-        // Take only first k points as required
-        BigInteger[] x = new BigInteger[data.k];
-        BigInteger[] y = new BigInteger[data.k];
-        
-        for (int i = 0; i < data.k; i++) {
-            x[i] = data.points.get(i).x;
-            y[i] = data.points.get(i).y;
+
+        BigInteger[] secretCoeffs = null;
+        List<Point> pts = data.points;
+        int n = data.n, k = data.k;
+        int[] idx = new int[k];
+        for (int i = 0; i < k; i++)
+            idx[i] = i;
+
+        Map<Point, Integer> mismatchCounts = new HashMap<>();
+
+        outer: while (true) {
+            // subset arrays
+            BigInteger[] x = new BigInteger[k];
+            BigInteger[] y = new BigInteger[k];
+            for (int i = 0; i < k; i++) {
+                x[i] = pts.get(idx[i]).x;
+                y[i] = pts.get(idx[i]).y;
+            }
+            // Solve Vandermonde for this subset
+            BigInteger[] coeffs = solveVandermonde(x, y);
+            // Validate all points & log mismatches
+            List<Point> mismatches = validateAndLog(coeffs, pts);
+            if (mismatches.isEmpty()) {
+                secretCoeffs = coeffs;
+                break outer;
+            } else {
+                for (Point m : mismatches) {
+                    mismatchCounts.put(m, mismatchCounts.getOrDefault(m, 0) + 1);
+                }
+            }
+
+            // next combination
+            int pos = k - 1;
+            while (pos >= 0 && idx[pos] == n - k + pos)
+                pos--;
+            if (pos < 0)
+                break;
+            idx[pos]++;
+            for (int j = pos + 1; j < k; j++)
+                idx[j] = idx[j - 1] + 1;
         }
-        
-        // Calculate secret using Vandermonde matrix method
-        BigInteger[] coefficients = solveVandermonde(x, y);
-        BigInteger secret = coefficients[0]; // The constant term is our secret
-        
-        System.out.println("\n*** SECRET FOUND: " + secret + " ***");
-        System.out.println("Full polynomial coefficients: " + Arrays.toString(coefficients));
-        System.out.println("=" + "=".repeat(50) + "\n");
+
+        if (secretCoeffs == null) {
+            System.err.println("No valid polynomial found for " + filename + "!\n");
+            if (!mismatchCounts.isEmpty()) {
+                System.out.println("=== POTENTIAL INCORRECT POINTS ===");
+                mismatchCounts.entrySet().stream()
+                        .sorted((a, b) -> b.getValue() - a.getValue())
+                        .forEach(e -> System.out
+                                .println(e.getKey().x + ":" + e.getKey().y + " failed " + e.getValue() + " times"));
+                System.out.println("===================================\n");
+            }
+        } else {
+            System.out.println("\n*** SECRET FOUND: " + secretCoeffs[0] + " ***");
+            System.out.println("Full polynomial coefficients (a0 ... a(k-1)): " + Arrays.toString(secretCoeffs));
+            System.out.println("=".repeat(60) + "\n");
+        }
     }
-    
+
     /**
-     * Vandermonde Matrix Method
-     * 
-     * The Vandermonde matrix for points (x1,y1), (x2,y2), ..., (xk,yk) is:
-     * | 1  x1  x1²  ...  x1^(k-1) |   | a0 |   | y1 |
-     * | 1  x2  x2²  ...  x2^(k-1) | × | a1 | = | y2 |
-     * | ...                       |   | .. |   | .. |
-     * | 1  xk  xk²  ...  xk^(k-1) |   |ak-1|   | yk |
-     * 
-     * We solve this system to find the coefficients, where a0 is our secret.
-     * 
-     * @param x Array of x coordinates
-     * @param y Array of y coordinates
-     * @return Array of polynomial coefficients [a0, a1, a2, ...]
+     * Vandermonde solver
      */
     public static BigInteger[] solveVandermonde(BigInteger[] x, BigInteger[] y) {
-        int n = x.length;
-        System.out.println("Solving using Vandermonde Matrix Method with " + n + " points...");
-        
-        // Build Vandermonde matrix and solve V·a = y via Gaussian elimination
-        BigDecimal[][] V = new BigDecimal[n][n + 1];
-        
-        for (int i = 0; i < n; i++) {
+        int m = x.length;
+        BigDecimal[][] V = new BigDecimal[m][m + 1];
+        for (int i = 0; i < m; i++) {
             BigDecimal pow = BigDecimal.ONE;
-            for (int j = 0; j < n; j++) {
+            for (int j = 0; j < m; j++) {
                 V[i][j] = pow;
                 pow = pow.multiply(new BigDecimal(x[i]));
             }
-            V[i][n] = new BigDecimal(y[i]); // Augmented part
+            V[i][m] = new BigDecimal(y[i]);
         }
-        
-        // Forward elimination with partial pivoting
-        for (int i = 0; i < n; i++) {
-            // Find pivot
-            int maxRow = i;
-            for (int k = i + 1; k < n; k++) {
-                if (V[k][i].abs().compareTo(V[maxRow][i].abs()) > 0) {
-                    maxRow = k;
-                }
+        for (int i = 0; i < m; i++) {
+            int maxR = i;
+            for (int r = i + 1; r < m; r++) {
+                if (V[r][i].abs().compareTo(V[maxR][i].abs()) > 0)
+                    maxR = r;
             }
-            
-            // Swap rows if needed
-            if (maxRow != i) {
-                BigDecimal[] temp = V[i];
-                V[i] = V[maxRow];
-                V[maxRow] = temp;
-            }
-            
-            // Pivot normalization
+            BigDecimal[] tmp = V[i];
+            V[i] = V[maxR];
+            V[maxR] = tmp;
             BigDecimal piv = V[i][i];
-            if (piv.equals(BigDecimal.ZERO)) {
-                throw new RuntimeException("Matrix is singular - no unique solution exists");
-            }
-            
-            for (int j = i; j <= n; j++) {
-                V[i][j] = V[i][j].divide(piv, MathContext.DECIMAL128);
-            }
-            
-            // Eliminate below
-            for (int k = i + 1; k < n; k++) {
-                BigDecimal factor = V[k][i];
-                for (int j = i; j <= n; j++) {
-                    V[k][j] = V[k][j].subtract(factor.multiply(V[i][j]));
-                }
+            if (piv.compareTo(BigDecimal.ZERO) == 0)
+                throw new RuntimeException("Singular matrix");
+            for (int c = i; c <= m; c++)
+                V[i][c] = V[i][c].divide(piv, MathContext.DECIMAL128);
+            for (int r = i + 1; r < m; r++) {
+                BigDecimal factor = V[r][i];
+                for (int c = i; c <= m; c++)
+                    V[r][c] = V[r][c].subtract(factor.multiply(V[i][c]));
             }
         }
-        
-        // Back substitution
-        BigInteger[] a = new BigInteger[n];
-        for (int i = n - 1; i >= 0; i--) {
-            BigDecimal sum = V[i][n];
-            for (int j = i + 1; j < n; j++) {
+        BigInteger[] a = new BigInteger[m];
+        for (int i = m - 1; i >= 0; i--) {
+            BigDecimal sum = V[i][m];
+            for (int j = i + 1; j < m; j++)
                 sum = sum.subtract(V[i][j].multiply(new BigDecimal(a[j])));
-            }
             a[i] = sum.toBigInteger();
         }
-        
-        System.out.println("Vandermonde matrix solved successfully!");
         return a;
     }
-    
+
     /**
-     * Parse JSON file manually (no external dependencies)
-     * @param filename Path to the JSON file
-     * @return Parsed test case data
+     * Validate polynomial against all points and log mismatches.
+     */
+    private static List<Point> validateAndLog(BigInteger[] coeffs, List<Point> pts) {
+        List<Point> mismatches = new ArrayList<>();
+        for (Point p : pts) {
+            BigInteger xi = p.x, acc = BigInteger.ZERO, pow = BigInteger.ONE;
+            for (BigInteger c : coeffs) {
+                acc = acc.add(c.multiply(pow));
+                pow = pow.multiply(xi);
+            }
+            if (!acc.equals(p.y)) {
+                System.out.println("Mismatch: x=" + xi + " expected=" + p.y + " got=" + acc);
+                mismatches.add(p);
+            }
+        }
+        return mismatches;
+    }
+
+    /**
+     * Parse JSON file manually with regex
      */
     public static TestCaseData parseJsonFile(String filename) throws Exception {
-        BufferedReader reader = new BufferedReader(new FileReader(filename));
-        StringBuilder content = new StringBuilder();
-        String line;
-        
-        while ((line = reader.readLine()) != null) {
-            content.append(line);
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
+            String l;
+            while ((l = br.readLine()) != null)
+                sb.append(l);
         }
-        reader.close();
-        
-        String json = content.toString();
-        
-        // Extract n and k values using regex
-        Pattern nPattern = Pattern.compile("\"n\"\\s*:\\s*(\\d+)");
-        Pattern kPattern = Pattern.compile("\"k\"\\s*:\\s*(\\d+)");
-        
-        Matcher nMatcher = nPattern.matcher(json);
-        Matcher kMatcher = kPattern.matcher(json);
-        
-        int n = 0, k = 0;
-        if (nMatcher.find()) n = Integer.parseInt(nMatcher.group(1));
-        if (kMatcher.find()) k = Integer.parseInt(kMatcher.group(1));
-        
-        // Extract points using regex
-        List<Point> points = new ArrayList<>();
-        Pattern pointPattern = Pattern.compile("\"(\\d+)\"\\s*:\\s*\\{\\s*\"base\"\\s*:\\s*\"(\\d+)\"\\s*,\\s*\"value\"\\s*:\\s*\"([^\"]+)\"\\s*\\}");
-        Matcher pointMatcher = pointPattern.matcher(json);
-        
-        while (pointMatcher.find()) {
-            int x = Integer.parseInt(pointMatcher.group(1));
-            int base = Integer.parseInt(pointMatcher.group(2));
-            String value = pointMatcher.group(3);
-            
-            // Convert from given base to decimal
-            BigInteger y = new BigInteger(value, base);
-            points.add(new Point(BigInteger.valueOf(x), y));
+        String json = sb.toString();
+        Pattern np = Pattern.compile("\\\"n\\\"\\s*:\\s*(\\d+)");
+        Pattern kp = Pattern.compile("\\\"k\\\"\\s*:\\s*(\\d+)");
+        Matcher nm = np.matcher(json), km = kp.matcher(json);
+        int nn = 0, kk = 0;
+        if (nm.find())
+            nn = Integer.parseInt(nm.group(1));
+        if (km.find())
+            kk = Integer.parseInt(km.group(1));
+        List<Point> list = new ArrayList<>();
+        Pattern pp = Pattern.compile(
+                "\\\"(\\\\d+)\\\"\\s*:\\s*\\{[^}]*\\\"base\\\"\\s*:\\s*\\\"(\\\\d+)\\\"[^}]*\\\"value\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"[^}]*\\}");
+        Matcher pm = pp.matcher(json);
+        while (pm.find()) {
+            BigInteger xi = new BigInteger(pm.group(1));
+            BigInteger yi = new BigInteger(pm.group(3), Integer.parseInt(pm.group(2)));
+            list.add(new Point(xi, yi));
         }
-        
-        return new TestCaseData(n, k, points);
+        return new TestCaseData(nn, kk, list);
     }
-    
-    /**
-     * Simple data class to hold a coordinate point
-     */
+
     static class Point {
         BigInteger x, y;
-        
-        Point(BigInteger x, BigInteger y) {
-            this.x = x;
-            this.y = y;
+
+        Point(BigInteger a, BigInteger b) {
+            x = a;
+            y = b;
         }
     }
-    
-    /**
-     * Simple data class to hold test case information
-     */
+
     static class TestCaseData {
         int n, k;
         List<Point> points;
-        
-        TestCaseData(int n, int k, List<Point> points) {
+
+        TestCaseData(int n, int k, List<Point> p) {
             this.n = n;
             this.k = k;
-            this.points = points;
+            this.points = p;
         }
     }
 }
